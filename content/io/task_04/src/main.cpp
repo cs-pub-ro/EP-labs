@@ -220,6 +220,9 @@ main(int32_t argc, char *argv[])
     /* register event callbacks */
     glfwSetFramebufferSizeCallback(window, callback_fb_resize);
 
+    /* disable vsync */
+    glfwSwapInterval(0);
+
     {
         /* create shader program, compile shaders, link them to program */
         prog = glCreateProgram();
