@@ -20,8 +20,9 @@
  * Global variables
  ******************************************************************************/
 
-static size_t   n   = 1024;   /* number of sphere surface samples */
-static uint32_t vbo = -1;     /* vertex buffer object             */
+static size_t   n         = 1024;   /* number of sphere surface samples  */
+static uint32_t vbo       = -1;     /* vertex buffer object              */
+static size_t   nb_frames = 0;      /* number of frames since last print */
 
 /******************************************************************************
  * Event callbacks & helpers
@@ -86,6 +87,22 @@ process_input(GLFWwindow *window)
             lb_isdown = false;
             break;
     }
+}
+
+/* show fps once every second */
+static void
+show_fps(double *last_time)
+{
+	double current_time = glfwGetTime();
+	double delta = current_time - *last_time;
+	nb_frames++;
+	if (delta >= 1.0) {
+		double fps = double(nb_frames) / delta;
+		DEBUG("fps = %3.2f", fps);
+
+		nb_frames = 0;
+		*last_time = current_time;
+	}
 }
 
 /* compile_shader - reads shader code from file, compiles it and links it
@@ -183,6 +200,7 @@ main(int32_t argc, char *argv[])
     uint32_t      vao;          /* vertex array object              */
     int32_t       ret = -1;     /* return code on termination       */
     int32_t       ans;          /* answer                           */
+    double        sim_time = 0; /* time of the simulation           */
 
     INFO("Press [ to halve number or vertices and ] to double them");
 
@@ -191,6 +209,9 @@ main(int32_t argc, char *argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    
+    /* Uncomment to disable VSync                     */
+    /* glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE); */
 
     /* create window object and make it current */
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "balls", NULL, NULL);
@@ -234,6 +255,9 @@ main(int32_t argc, char *argv[])
     while (!glfwWindowShouldClose(window)) {
         /* process input */
         process_input(window);
+
+	/* print fps to console */
+	show_fps(&sim_time);
 
         /* get rotation angle uniform location in GPU memory */
         int32_t theta_loc = glGetUniformLocation(prog, "theta");
