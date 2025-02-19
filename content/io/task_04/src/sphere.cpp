@@ -15,7 +15,7 @@
  *       Vertex Buffer Object.
  */
 int32_t
-gen_sphere(size_t n, uint32_t *vbo)
+gen_sphere(size_t n, uint32_t *vbo, double *duration)
 {
     float *vertices;    /* RAM buffer for vertex data  */
     float phi;          /* golden angle                */
@@ -45,6 +45,7 @@ gen_sphere(size_t n, uint32_t *vbo)
         vertices[i * 3 + 2] = z;
     }
 
+    double memcpy_initial = glfwGetTime();
     /* upload vertex data to GPU memory and specify data format */
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, 3 * n * sizeof(float),
@@ -53,6 +54,9 @@ gen_sphere(size_t n, uint32_t *vbo)
                           3 * sizeof(float), (void *) 0);
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    if (duration) {
+        *duration = glfwGetTime() - memcpy_initial;
+    }
 
     /* free vertices buffer from RAM */
     free(vertices);
