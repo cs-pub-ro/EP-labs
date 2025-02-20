@@ -8,18 +8,24 @@
 #define FPS_OUT_FILE "fps_stats.csv"
 #define IO_OUT_FILE  "io_stats.csv"
 
-static size_t      fps_stats_cnt   = 0; /* fps statistics counter */
-static fps_stats_t fps_stats[6000];     /* fps statistics for max 10 minutes */
-static size_t      io_stats_cnt    = 0; /* io statistics counter */
-static io_stats_t  io_stats[6000];      /* io statistics for max 10 minutes  */
+#define MAX_SIZE_STATS 6000
+
+static size_t      fps_stats_cnt   = 0;       /* fps statistics counter */
+static fps_stats_t fps_stats[MAX_SIZE_STATS]; /* fps statistics for max 10 minutes */
+static size_t      io_stats_cnt    = 0;       /* io statistics counter */
+static io_stats_t  io_stats[MAX_SIZE_STATS];  /* io statistics for max 10 minutes  */
 
 /* track fps once every second */
 void
 track_fps(double *last_time, size_t vertices, size_t *nb_frames)
 {
+    if (fps_stats_cnt >= MAX_SIZE_STATS)
+        return;
+
     double current_time = glfwGetTime();
     double delta = current_time - *last_time;
     *nb_frames += 1;
+
     if (delta >= 0.1) {
         double fps = double(*nb_frames) / delta;
 
@@ -40,6 +46,9 @@ track_fps(double *last_time, size_t vertices, size_t *nb_frames)
 void
 track_io_event(double event_time, double generate_duration, double memcpy_duration, size_t vertices)
 {
+    if (io_stats_cnt >= MAX_SIZE_STATS)
+        return;
+
     static double last_time = 0;
     double current_time = glfwGetTime();
     double delta = current_time - last_time;
