@@ -1,0 +1,71 @@
+*** minspect.cpp.old	2020-07-22 06:20:18.646342827 +0800
+--- minspect.cpp	2020-07-22 06:26:43.125377288 +0800
+***************
+*** 22,27 ****
+--- 22,31 ----
+   ********************* GLOBAL DEFINITIONS & DECLARATIONS **********************
+   ******************************************************************************/
+  
++ /* command line arguments */
++ static KNOB<string> knob_img(KNOB_MODE_APPEND,    "pintool",
++         "i", "", "names of objects to be instrumented for branch logging");
++ 
+  /* pre-write -> post-write analysis routine communication medium */
+  stack<char *> pre_write_states;
+  
+***************
+*** 57,62 ****
+--- 61,85 ----
+      return hd;
+  }
+  
++ /*
++  * ends_with - checks if a string ends with another string
++  *      @s      : string
++  *      @sfx    : suffix
++  * 
++  *      @return : { true, false }
++  * 
++  * The Image names as provided by the PIN API are absolute paths to the objects
++  * on disk. This is useful to improve portability of any experiment scripts
++  * that provide only the base name (e.g.: "libc.so.6").
++  */
++ inline bool ends_with(string &s, string &sfx)
++ {
++     if (sfx.size() > s.size())
++         return false;
++ 
++     return equal(sfx.rbegin(), sfx.rend(), s.rbegin());
++ }
++ 
+  /******************************************************************************
+   ***************************** ANALYSIS ROUTINES ******************************
+   ******************************************************************************/
+***************
+*** 161,166 ****
+--- 184,208 ----
+   */
+  void ins_instrum(INS ins, void *)
+  {
++     /* extract image name */
++     RTN rtn = INS_Rtn(ins);
++     SEC sec = RTN_Valid(rtn) ? RTN_Sec(rtn) : SEC_Invalid();
++     IMG img = SEC_Valid(sec) ? SEC_Img(sec) : IMG_Invalid();
++     if (!IMG_Valid(img))
++         return;
++ 
++     string img_name = IMG_Name(img);
++ 
++     /* ignore irrelevant images (as specified by user) */
++     for (size_t i=0; i<knob_img.NumberOfValues(); ++i) {
++         string sfx = knob_img.Value(i);
++         if (ends_with(img_name, sfx))
++             goto proceed;
++     }
++ 
++     return;
++ 
++ proceed:
+      /* extract address & ins disassembly */
+      uint64_t ins_addr   = INS_Address(ins);
+      string   ins_disass = INS_Disassemble(ins);

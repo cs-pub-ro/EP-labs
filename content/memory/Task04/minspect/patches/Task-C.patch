@@ -1,0 +1,141 @@
+*** minspect.cpp.old	2020-07-22 05:54:23.503155998 +0800
+--- minspect.cpp	2020-07-22 06:06:52.851892391 +0800
+***************
+*** 3,20 ****
+--- 3,31 ----
+   *      1) https://www.felixcloutier.com/x86/inc
+   *      2) https://www.felixcloutier.com/x86/rep:repe:repz:repne:repnz
+   *      3) https://www.felixcloutier.com/x86/cmovcc
++  *      4) https://software.intel.com/sites/landingpage/pintool/docs/97503/Pin/h
++  *         tml/group__INST__ARGS.html#gga089c27ca15e9ff139dd3a3f8a6f8451da985747
++  *         a3c70e3a4283fc8a2f16399e63
+   */
+  
+  #include <cstdio>       /* fprintf                  */
+  #include <cstdint>      /* [u]int{8,16,32,64}_t     */
+  #include <string>       /* string                   */
+  #include <cstring>      /* strdup                   */
++ #include <stack>        /* stack                    */
+  #include "pin.H"        /* Intel Pin API            */
+  #include "util.h"       /* DIE, ANSI codes          */
+  
+  using namespace std;
+  
+  /******************************************************************************
++  ********************* GLOBAL DEFINITIONS & DECLARATIONS **********************
++  ******************************************************************************/
++ 
++ /* pre-write -> post-write analysis routine communication medium */
++ stack<char *> pre_write_states;
++ 
++ /******************************************************************************
+   ***************************** UTILITY FUNCTIONS ******************************
+   ******************************************************************************/
+  
+***************
+*** 80,85 ****
+--- 91,151 ----
+      free(hd);
+  }
+  
++ /*
++  *  pre_write_analysis - code inserted before each store instruction, once for
++  *                       every written operand (reflected in accessed_addr)
++  *      @accessed_addr  : memory destination address
++  *      @accessed_bytes : number of written bytes
++  * 
++  *      @return         : N/A
++  * 
++  * This function is used only to pass the initial buffer state to the post-write
++  * analysis routine.
++  */
++ void pre_write_analysis(uint64_t accessed_addr,
++                         uint32_t accessed_bytes)
++ {
++     /* push pre-written hexdump of memory to common stack */
++     pre_write_states.push(hexdump((void *) accessed_addr, accessed_bytes));
++ }
++ 
++ /*
++  * post_write_analysis - code inserted after each store instruction, once for
++  *                       every written operand (reflected in accessed_addr)
++  *      @ins_addr       : original instruction address
++  *      @ins_disass     : disassembly of instruction
++  *      @accessed_addr  : memory destination address
++  *      @accessed_bytes : number of written bytes
++  * 
++  *      @return         : N/A
++  * 
++  * This function uses a hexdump string passed by the pre-write analysis routine
++  * via the pre_write_states stack.
++  */
++ void post_write_analysis(uint64_t ins_addr,
++                          char     *ins_disass,
++                          uint64_t accessed_addr,
++                          uint32_t accessed_bytes)
++ {
++     /* get hexdump of written memory */
++     char *pre_hd  = pre_write_states.top();
++     char *post_hd = hexdump((void *) accessed_addr, accessed_bytes);
++ 
++     fprintf(stderr,
++         CYAN   TOOL_TAG  CLEAR " "
++                "WRITE"         " | "
++         BLUE   "%#018lx" CLEAR ": "
++                "%-40s"         " -- [ "
++         YELLOW "%s"      CLEAR "] ==> [ "
++         RED    "%s"      CLEAR "]\n",
++         ins_addr, ins_disass, pre_hd, post_hd);
++ 
++     /* free hexdump buffers; pop element from stack */
++     free(pre_hd);
++     free(post_hd);
++     pre_write_states.pop();
++ }
++ 
+  /******************************************************************************
+   ************************* INSTRUMENTATION CALLBACKS **************************
+   ******************************************************************************/
+***************
+*** 115,120 ****
+--- 181,220 ----
+                  IARG_MEMORYOP_EA,   op_idx,
+                  IARG_MEMORYREAD_SIZE,
+                  IARG_END);
++ 
++         /* memory writes must be instrumented both before and after   *
++          *                                                            *       
++          * NOTE: all pre_write_analysis() are evaluated before any    *
++          *       post_write_analysis()                                *
++          * NOTE: the k^th written operand (out of n) will be the k^th *
++          *       analyzed with pre_write_analysis() and the (n-k)^th  *
++          *       analyzed with post_write_analysis(); as a result, a  *
++          *       stack can be used to pass information from           *
++          *       pre_write_analysis() to post_write_analysis()        */
++         if (INS_MemoryOperandIsWritten(ins, op_idx) &&
++             INS_IsValidForIpointAfter(ins))
++         {
++             /* get initial buffer state */
++             INS_InsertPredicatedCall(
++                 ins, IPOINT_BEFORE, (AFUNPTR) pre_write_analysis,
++                 IARG_CALL_ORDER,    CALL_ORDER_FIRST + op_idx + 1,
++                 IARG_MEMORYOP_EA,   op_idx,
++                 IARG_MEMORYWRITE_SIZE,
++                 IARG_END);
++ 
++             /* display all information (including initial buffer state)      *
++              *                                                               *
++              * NOTE: the Pin documentation [4] says that IARG_MEMORYOP_EA is *
++              *       valid only at IPOINT_BEFORE; somehow, this works        */
++             INS_InsertPredicatedCall(
++                 ins, IPOINT_AFTER, (AFUNPTR) post_write_analysis,
++                 IARG_CALL_ORDER,    CALL_ORDER_LAST - op_idx - 1,
++                 IARG_ADDRINT,       ins_addr,
++                 IARG_PTR,           strdup(ins_disass.c_str()),
++                 IARG_MEMORYOP_EA,   op_idx,
++                 IARG_MEMORYWRITE_SIZE,
++                 IARG_END);
++         }
+      }
+  }
+  

@@ -1,0 +1,149 @@
+*** minspect.cpp.old	2020-07-22 05:53:18.475231469 +0800
+--- minspect.cpp	2020-07-22 05:53:32.531180947 +0800
+***************
+*** 1,12 ****
+--- 1,86 ----
++ /*
++  *  LINKS:
++  *      1) https://www.felixcloutier.com/x86/inc
++  *      2) https://www.felixcloutier.com/x86/rep:repe:repz:repne:repnz
++  *      3) https://www.felixcloutier.com/x86/cmovcc
++  */
++ 
+  #include <cstdio>       /* fprintf                  */
+  #include <cstdint>      /* [u]int{8,16,32,64}_t     */
+  #include <string>       /* string                   */
++ #include <cstring>      /* strdup                   */
+  #include "pin.H"        /* Intel Pin API            */
+  #include "util.h"       /* DIE, ANSI codes          */
+  
+  using namespace std;
+  
+  /******************************************************************************
++  ***************************** UTILITY FUNCTIONS ******************************
++  ******************************************************************************/
++ 
++ /*
++  *  hexdump - returns string containing hexdump of memory area
++  *      @addr   : starting address
++  *      @len    : number of bytes
++  * 
++  *      @return : pointer to internally allocated C-string
++  *                caller must free!
++  * 
++  * NOTE: generally, expect small sizes for len:
++  *          SIMD reads / writes = up to 32 bytes
++  *          x(r)stor            = 896 bytes
++  *          string instructions = unknown
++  */
++ char *hexdump(void *addr, size_t len)
++ {
++     /* allocate buffer (2 chars + 1 space) per byte + '\0' */
++     char *hd = (char *) malloc(3 * len + 1);
++ 
++     /* write hexdump byte by byte */
++     for (size_t i=0; i<len; ++i)
++         snprintf(hd + 3*i, 4, "%02hhx ", ((uint8_t *) addr)[i]);
++     
++     /* make sure string is null terminated */
++     hd[3 * len] = '\0';
++ 
++     return hd;
++ }
++ 
++ /******************************************************************************
++  ***************************** ANALYSIS ROUTINES ******************************
++  ******************************************************************************/
++ 
++ /*
++  *  read_analysis - code inserted before each load instruction, once for every
++  *                  read operand(reflected in accessed_addr)
++  *      @ins_addr       : absolute instruction address
++  *      @ins_disass     : disassembly of instruction
++  *      @accessed_addr  : memory source address
++  *      @accessed_bytes : number of read bytes
++  * 
++  *      @return         : N/A
++  */
++ void read_analysis(uint64_t ins_addr,
++                    char     *ins_disass,
++                    uint64_t accessed_addr,
++                    uint32_t accessed_bytes)
++ {
++     /* get hexdump of read memory */
++     char *hd = hexdump((void *) accessed_addr, accessed_bytes);
++ 
++     fprintf(stderr,
++         CYAN  TOOL_TAG  CLEAR " "
++               "READ "         " | "
++         BLUE  "%#018lx" CLEAR ": "
++               "%-40s"         " -- [ "
++         GREEN "%s"      CLEAR "]\n",
++         ins_addr, ins_disass, hd);
++ 
++     /* free hexdump buffer */
++     free(hd);
++ }
++ 
++ /******************************************************************************
+   ************************* INSTRUMENTATION CALLBACKS **************************
+   ******************************************************************************/
+  
+***************
+*** 21,48 ****
+   */
+  void ins_instrum(INS ins, void *)
+  {
+!     /* fetch references to increasingly larger units that contain ins */
+!     RTN rtn = INS_Rtn(ins);
+!     SEC sec = RTN_Valid(rtn) ? RTN_Sec(rtn) : SEC_Invalid();
+!     IMG img = SEC_Valid(sec) ? SEC_Img(sec) : IMG_Invalid();
+! 
+!     /* extract the names & ins disassembly */
+      uint64_t ins_addr   = INS_Address(ins);
+      string   ins_disass = INS_Disassemble(ins);
+-     string   rtn_name   = RTN_Valid(rtn) ? RTN_Name(rtn) : "?????";
+-     string   sec_name   = SEC_Valid(sec) ? SEC_Name(sec) : "?????";
+-     string   img_name   = IMG_Valid(img) ? IMG_Name(img) : "?????";
+  
+!     /* output info for each instruction */
+!     fprintf(stderr,
+!         CYAN   TOOL_TAG CLEAR " "
+!         RED    "%s"     CLEAR ":"
+!         GREEN  "%s"     CLEAR ":"
+!         BLUE   "%s"     CLEAR ":"
+!         YELLOW "%lx"    CLEAR " -- "
+!                "%s\n",
+!         img_name.c_str(), sec_name.c_str(), rtn_name.c_str(),
+!         ins_addr, ins_disass.c_str());
+  }
+  
+  /******************************************************************************
+--- 95,121 ----
+   */
+  void ins_instrum(INS ins, void *)
+  {
+!     /* extract address & ins disassembly */
+      uint64_t ins_addr   = INS_Address(ins);
+      string   ins_disass = INS_Disassemble(ins);
+  
+!     /* for each memory operand of this instruction */
+!     uint32_t mem_ops = INS_MemoryOperandCount(ins);
+!     for (uint32_t op_idx = 0; op_idx < mem_ops; ++op_idx) {
+!         /* perform read analysis                                            *
+!          *                                                                  *
+!          * NOTE: one instruction can both read and write memory (see [1])   *
+!          * NOTE: predicated call insertions are needed here for REP [2] and *
+!          *       conditional moves [3]                                      */
+!         if (INS_MemoryOperandIsRead(ins, op_idx))
+!             INS_InsertPredicatedCall(
+!                 ins, IPOINT_BEFORE, (AFUNPTR) read_analysis,
+!                 IARG_ADDRINT,       ins_addr,
+!                 IARG_PTR,           strdup(ins_disass.c_str()),
+!                 IARG_MEMORYOP_EA,   op_idx,
+!                 IARG_MEMORYREAD_SIZE,
+!                 IARG_END);
+!     }
+  }
+  
+  /******************************************************************************
