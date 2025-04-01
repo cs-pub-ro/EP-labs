@@ -56,7 +56,7 @@ process_input(GLFWwindow *window)
             rb_isdown = true;
 
             /* don't let it overflow */
-            if (__builtin_clzg(n)) {
+            if (__builtin_clz(n)) {
                 n *= 2;
                 double event_time = glfwGetTime();
                 double memcpy_duration;
