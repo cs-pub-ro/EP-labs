@@ -5,7 +5,7 @@ OBJ = obj
 INC = include
 
 # compiler settings
-CXX      = clang++
+CXX      = g++
 CXXFLAGS = -std=c++23 -O2 -I$(INC)
 LDFLAGS  = -lGL -ldl -lglfw
 
