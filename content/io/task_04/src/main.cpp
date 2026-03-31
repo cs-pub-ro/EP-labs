@@ -29,6 +29,13 @@ static size_t   nb_frames = 0;      /* number of frames since last print */
  * Event callbacks & helpers
  ******************************************************************************/
 
+/* glfw error callback */
+static void
+glfw_error_callback(int errnum, const char *description)
+{
+    ERROR("GLFW call failed with code %d (%s)", errnum, description);
+}
+
 /* updated viewport on window resize */
 static void
 callback_fb_resize(GLFWwindow *window, int32_t width, int32_t height)
@@ -203,6 +210,8 @@ main(int32_t argc, char *argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    glfwSetErrorCallback(glfw_error_callback);
 
     /* create window object and make it current */
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "balls", NULL, NULL);
