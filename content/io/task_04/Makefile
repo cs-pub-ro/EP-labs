@@ -6,7 +6,7 @@ INC = include
 
 # compiler settings
 CXX      = g++
-CXXFLAGS = -std=c++23 -O2 -I$(INC)
+CXXFLAGS = -O2 -I$(INC)
 LDFLAGS  = -lGL -ldl -lglfw
 
 # identify sources and generate object targets
